@@ -6,7 +6,7 @@ session: footer widgets, review feedback, and watching.
 ## 🚀 Installation
 
 ```sh
-pi install npm:pi-pr
+pi install npm:pi-prs
 ```
 
 Install [GitHub CLI](https://cli.github.com/) and authenticate it before using
@@ -50,7 +50,7 @@ extensions consume its state from the event bus instead of shelling out to
 `gh`:
 
 ```ts
-import { createPiPrClient } from "pi-pr/api";
+import { createPiPrClient } from "pi-prs/api";
 
 export default function (pi) {
   const client = createPiPrClient(pi);

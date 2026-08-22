@@ -1,0 +1,8 @@
+created: 2026-08-22
+title: GitHub pull request review watching
+intro: >-
+  Pi PR tracks the pull request for your current branch and keeps its draft, merge,
+  CI, and unresolved review state visible in Pi. The new watch mode streams actionable
+  review feedback into the session with source context intact.
+source:
+  mode: sync-stable-queue

@@ -1,5 +1,5 @@
 {
-  "name": "pi-pr",
+  "name": "pi-prs",
   "version": "0.1.0",
   "description": "Pull request review feedback and watching for pi",
   "type": "module",
