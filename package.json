@@ -20,7 +20,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mavam/pi-pr.git"
+    "url": "git+https://github.com/mavam/pi-prs.git"
   },
   "exports": {
     ".": "./src/index.ts",
