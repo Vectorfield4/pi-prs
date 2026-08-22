@@ -1,4 +1,4 @@
-# 👁️ pi-pr
+# 🐙 pi-pr
 
 A [Pi](https://pi.dev) extension that owns GitHub pull request state for your
 session: footer widgets, review feedback, and watching.
@@ -40,23 +40,7 @@ Watching stops automatically when the pull request closes or merges.
 
 When [pi-fancy-footer](https://github.com/mavam/pi-fancy-footer) is installed,
 pi-pr publishes the pull request number, unresolved review threads, and CI
-status:
-
-```text
- 7  󰅺3  
-```
-
-The pull request icon dims for drafts and turns accent-colored when auto-merge
-is enabled. All pull request widgets dim while GitHub state is degraded. While
-`/pr watch` is active, an eye replaces the review-thread icon:
-
-```text
- 7  3  
-```
-
-The widget IDs are `pi-pr.number`, `pi-pr.review-threads`, and `pi-pr.ci`. They
-use pi-fancy-footer's event protocol without taking a package dependency on the
-footer. You can change their placement, visibility, and colors with
+status. You can change their placement, visibility, and colors with
 `/fancy-footer`.
 
 ## 🔌 Extension API
