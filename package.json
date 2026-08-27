@@ -1,7 +1,7 @@
 {
-  "name": "pi-prs",
+  "name": "@vectorfield/pi-prs",
   "version": "0.1.0",
-  "description": "Pull request review feedback and watching for pi",
+  "description": "Fork of pi-prs: GitHub pull request feedback/watching with explicit PR URL or number targeting. Lets /pr watch follow a release PR (e.g. dev->main) from any session cwd.",
   "type": "module",
   "files": [
     "src",
@@ -14,14 +14,10 @@
     "pi-extension",
     "github",
     "pull-request",
-    "code-review"
+    "code-review",
+    "release"
   ],
-  "author": "Matthias Vallentin",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/mavam/pi-prs.git"
-  },
   "exports": {
     ".": "./src/index.ts",
     "./api": "./src/api.ts"
@@ -30,12 +26,8 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "check": "tsc --noEmit && node --test --experimental-strip-types src/*.test.ts",
+    "check": "tsc --noEmit",
     "test": "tsc --noEmit && node --test --experimental-strip-types src/*.test.ts"
-  },
-  "dependencies": {
-    "turndown": "^7.2.4",
-    "turndown-plugin-gfm": "^1.0.2"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
@@ -45,7 +37,6 @@
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*",
     "@types/node": "^24.0.0",
-    "@types/turndown": "^5.0.5",
     "typescript": "^5.9.0"
   },
   "publishConfig": {

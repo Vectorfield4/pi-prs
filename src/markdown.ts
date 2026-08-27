@@ -1,4 +1,4 @@
-/** Turndown-backed conversion of GitHub's rendered HTML into Markdown. */
+/** Review body normalization. HTML-to-Markdown favours GitHub's source body. */
 
 const CODEX_REVIEW_AUTHOR = "chatgpt-codex-connector";
 
@@ -8,34 +8,14 @@ export interface ReviewContent {
   title?: string;
 }
 
-let markdownFromHtml: ((html: string) => string) | undefined;
-
+/**
+ * Dependency-free converter. The original pi-pr used turndown to convert
+ * GitHub's rendered HTML; this fork deliberately has no runtime npm
+ * dependencies, so it always uses GitHub's source Markdown body directly.
+ */
 export async function loadHtmlConverter(): Promise<void> {
-  try {
-    const [{ default: TurndownService }, { gfm }] = await Promise.all([
-      import("turndown"),
-      import("turndown-plugin-gfm"),
-    ]);
-    const turndown = new TurndownService({
-      bulletListMarker: "-",
-      codeBlockStyle: "fenced",
-    });
-    turndown.use(gfm);
-    turndown.addRule("github-priority-badge", {
-      filter: (node) => {
-        const image = node.nodeName === "A" ? node.firstElementChild : undefined;
-        return (
-          image?.nodeName === "IMG" &&
-          /^P\d+ Badge$/i.test(image.getAttribute?.("alt") ?? "")
-        );
-      },
-      replacement: (_content, node) =>
-        node.firstElementChild?.getAttribute("alt") ?? "",
-    });
-    markdownFromHtml = (html) => turndown.turndown(html);
-  } catch {
-    // GitHub's source Markdown remains usable without optional npm packages.
-  }
+  // Intentionally a no-op in this fork: review bodies are used as GitHub
+  // provides them, so there is nothing to pre-load.
 }
 
 export function normalizeReviewMarkdown(markdown: string): ReviewContent {
@@ -75,19 +55,11 @@ export function stripCodexReviewBoilerplate(markdown: string): string {
 
 export function reviewContentFrom(
   body: string,
-  bodyHtml: string,
+  _bodyHtml: string,
   author: string,
   isReview: boolean,
 ): ReviewContent {
-  let content: ReviewContent | undefined;
-  if (bodyHtml && markdownFromHtml) {
-    try {
-      content = normalizeReviewMarkdown(markdownFromHtml(bodyHtml).trim());
-    } catch {
-      // Fall back to GitHub's source Markdown when conversion fails.
-    }
-  }
-  content ??= normalizeReviewMarkdown(body);
+  const content = normalizeReviewMarkdown(body);
 
   if (!isReview || author !== CODEX_REVIEW_AUTHOR) return content;
   return { ...content, body: stripCodexReviewBoilerplate(content.body) };

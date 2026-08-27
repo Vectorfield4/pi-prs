@@ -10,8 +10,10 @@ import {
 import { fetchCiStatus } from "./ci.ts";
 import {
   type DiscoveredPullRequest,
+  type DiscoveryResult,
   currentBranch,
   discoverPullRequest,
+  resolveExplicitPullRequest,
 } from "./discovery.ts";
 import {
   type FeedbackSnapshot,
@@ -28,7 +30,7 @@ function isFeedbackSnapshot(
 }
 
 /**
- * Opinionated cadences. pi-prs is the only GitHub poller in a session, so these
+ * Opinionated cadences. pi-pr is the only GitHub poller in a session, so these
  * are deliberately conservative; configuration comes later.
  */
 const IDLE_INTERVAL_MS = 60_000;
@@ -57,7 +59,7 @@ export interface Poller {
   start(cwd: string): void;
   stop(): void;
   setCwd(cwd: string): void;
-  watch(cwd: string): Promise<WatchResult>;
+  watch(cwd: string, targetRef?: string): Promise<WatchResult>;
   unwatch(): boolean;
   isWatching(): boolean;
   currentState(): PullRequestStateEvent | undefined;
@@ -79,6 +81,12 @@ export function createPoller(options: PollerOptions): Poller {
   let branch = "";
   let repository = "";
   let discovered: DiscoveredPullRequest | undefined;
+  /**
+   * When set, the poller targets this pull request explicitly (URL or number)
+   * instead of discovering by the branch checked out at `cwd`. Lets the
+   * session watch a release PR whose head branch differs from its cwd.
+   */
+  let explicitTarget: PullRequestTarget | undefined;
   let watching = false;
   let seen = new Set<string>();
   let state: PullRequestStateEvent | undefined;
@@ -87,6 +95,7 @@ export function createPoller(options: PollerOptions): Poller {
 
   const clearTarget = (): void => {
     discovered = undefined;
+    explicitTarget = undefined;
     watching = false;
     seen = new Set<string>();
     ciStatus = undefined;
@@ -109,7 +118,7 @@ export function createPoller(options: PollerOptions): Poller {
 
     state = {
       protocol: PI_PR_PROTOCOL,
-      source: "pi-prs",
+      source: "pi-pr",
       repository,
       branch,
       health,
@@ -145,43 +154,69 @@ export function createPoller(options: PollerOptions): Poller {
     let nextHealth: PullRequestHealth = state?.health ?? "ok";
 
     try {
-      const nextBranch = await currentBranch(pi, pollCwd);
-      if (!active) return;
-      if (nextBranch !== branch || pollCwd !== cwd) {
-        branch = nextBranch;
-        clearTarget();
-      }
+      if (explicitTarget) {
+        // Watch a fixed PR. Re-resolve each cycle only to track lifecycle
+        // changes (draft, approvals, merge/close); target never follows cwd.
+        const targetResult = await resolveExplicitPullRequest(
+          pi,
+          explicitTarget.url,
+          pollCwd,
+        );
+        if (!active || pollCwd !== cwd) return;
+        repository = targetResult.repository;
+        if (targetResult.authFailed || targetResult.failed) {
+          failures += 1;
+          nextHealth = targetResult.authFailed ? "unauthenticated" : "error";
+          publish(nextHealth);
+          return;
+        }
+        if (!targetResult.pullRequest) {
+          clearTarget();
+          failures = 0;
+          nextHealth = "ok";
+          publish(nextHealth);
+          return;
+        }
+        discovered = targetResult.pullRequest;
+      } else {
+        const nextBranch = await currentBranch(pi, pollCwd);
+        if (!active) return;
+        if (nextBranch !== branch || pollCwd !== cwd) {
+          branch = nextBranch;
+          clearTarget();
+        }
 
-      if (!branch) {
-        repository = "";
-        ciStatus = undefined;
-        unresolvedThreadCount = 0;
-        failures = 0;
-        nextHealth = "ok";
-        publish(nextHealth);
-        return;
-      }
+        if (!branch) {
+          repository = "";
+          ciStatus = undefined;
+          unresolvedThreadCount = 0;
+          failures = 0;
+          nextHealth = "ok";
+          publish(nextHealth);
+          return;
+        }
 
-      const result = await discoverPullRequest(pi, pollCwd, branch);
-      if (!active || pollCwd !== cwd) return;
-      repository = result.repository;
-      if (result.authFailed || result.failed) {
-        failures += 1;
-        nextHealth = result.authFailed ? "unauthenticated" : "error";
-        publish(nextHealth);
-        return;
-      }
+        const result = await discoverPullRequest(pi, pollCwd, branch);
+        if (!active || pollCwd !== cwd) return;
+        repository = result.repository;
+        if (result.authFailed || result.failed) {
+          failures += 1;
+          nextHealth = result.authFailed ? "unauthenticated" : "error";
+          publish(nextHealth);
+          return;
+        }
 
-      const nextPullRequest = result.pullRequest;
-      if (!nextPullRequest) {
-        clearTarget();
-        failures = 0;
-        nextHealth = "ok";
-        publish(nextHealth);
-        return;
+        const nextPullRequest = result.pullRequest;
+        if (!nextPullRequest) {
+          clearTarget();
+          failures = 0;
+          nextHealth = "ok";
+          publish(nextHealth);
+          return;
+        }
+        if (discovered?.target.url !== nextPullRequest.target.url) clearTarget();
+        discovered = nextPullRequest;
       }
-      if (discovered?.target.url !== nextPullRequest.target.url) clearTarget();
-      discovered = nextPullRequest;
 
       const target = discovered.target;
       const [ci, threads] = await Promise.all([
@@ -261,37 +296,47 @@ export function createPoller(options: PollerOptions): Poller {
       branch = "";
       clearTarget();
     },
-    watch: async (nextCwd) => {
+    watch: async (nextCwd, targetRef) => {
       active = true;
       const cwdChanged = cwd !== nextCwd;
       cwd = nextCwd;
 
-      const nextBranch = await currentBranch(pi, nextCwd);
-      if (!nextBranch) {
-        return { ok: false, error: "No branch is checked out" };
-      }
-      if (nextBranch !== branch || cwdChanged) {
-        branch = nextBranch;
-        clearTarget();
+      let result: DiscoveryResult;
+      if (targetRef) {
+        // Explicit target: resolve straight from GitHub, independent of the
+        // checked-out branch. `gh pr view <url|#number>` is repo-qualified.
+        result = await resolveExplicitPullRequest(pi, targetRef, nextCwd);
+        branch = "";
+        explicitTarget = result.pullRequest?.target;
+      } else {
+        const nextBranch = await currentBranch(pi, nextCwd);
+        if (!nextBranch) {
+          return { ok: false, error: "No branch is checked out" };
+        }
+        if (nextBranch !== branch || cwdChanged) {
+          branch = nextBranch;
+          clearTarget();
+        }
+        result = await discoverPullRequest(pi, nextCwd, branch);
       }
 
-      const result = await discoverPullRequest(pi, nextCwd, branch);
       repository = result.repository;
       if (result.authFailed || result.failed) {
         return {
           ok: false,
           error: result.authFailed
             ? "GitHub authentication failed; run gh auth login"
-            : "Failed to resolve the current pull request from GitHub",
+            : "Failed to resolve the pull request from GitHub",
         };
       }
       if (!result.pullRequest) {
         return {
           ok: false,
-          error: "No pull request found for the current branch",
+          error: targetRef
+            ? "No pull request found for the given URL or number"
+            : "No pull request found for the current branch",
         };
       }
-      if (discovered?.target.url !== result.pullRequest.target.url) clearTarget();
       discovered = result.pullRequest;
       if (discovered.lifecycle !== "open") {
         return { ok: false, error: `The pull request is ${discovered.lifecycle}` };

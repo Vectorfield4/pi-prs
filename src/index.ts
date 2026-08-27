@@ -12,7 +12,8 @@ import { loadHtmlConverter } from "./markdown.ts";
 import { FEEDBACK_MESSAGE_TYPE, registerFeedbackRenderer } from "./message.ts";
 import { createPoller } from "./poller.ts";
 
-const USAGE = "Usage: /pr watch | /pr unwatch";
+const USAGE =
+  "Usage: /pr watch [url|#number] | /pr unwatch — watch the current branch's PR, or an explicit pull request URL/number";
 
 export default async function (pi: ExtensionAPI) {
   await loadHtmlConverter();
@@ -30,7 +31,7 @@ export default async function (pi: ExtensionAPI) {
     onFeedback: (target, feedback) => {
       pi.events.emit(PI_PR_FEEDBACK_CHANNEL, {
         protocol: PI_PR_PROTOCOL,
-        source: "pi-prs",
+        source: "pi-pr",
         target,
         feedback,
       } satisfies FeedbackEvent);
@@ -39,7 +40,7 @@ export default async function (pi: ExtensionAPI) {
 
   registerFeedbackRenderer(pi);
 
-  // Any extension may publish review feedback on this channel; pi-prs turns it
+  // Any extension may publish review feedback on this channel; pi-pr turns it
   // into a steering message for the agent.
   const stopFeedbackListener = pi.events.on(PI_PR_FEEDBACK_CHANNEL, (raw) => {
     if (!sessionActive || !isFeedbackEvent(raw) || raw.feedback.length === 0) {
@@ -87,19 +88,22 @@ export default async function (pi: ExtensionAPI) {
         return;
       }
 
-      if (action !== "watch" || words.length !== 1) {
+      if (action !== "watch" || words.length < 1 || words.length > 2) {
         ctx.ui.notify(USAGE, action ? "warning" : "info");
         return;
       }
 
-      const result = await poller.watch(ctx.cwd);
+      const targetRef = words[1];
+      const result = await poller.watch(ctx.cwd, targetRef);
       if (!result.ok) {
         ctx.ui.notify(`Cannot watch pull request: ${result.error}`, "error");
         return;
       }
       const target = result.target!;
       ctx.ui.notify(
-        `Watching ${target.owner}/${target.name}#${target.number}`,
+        targetRef
+          ? `Watching targeted PR ${target.owner}/${target.name}#${target.number}`
+          : `Watching ${target.owner}/${target.name}#${target.number}`,
         "info",
       );
     },

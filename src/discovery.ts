@@ -438,3 +438,45 @@ export async function discoverPullRequest(
     failed,
   };
 }
+
+/**
+ * Resolve an explicitly targeted pull request (URL or number) straight from
+ * GitHub, independent of the branch checked out at `cwd`.
+ *
+ * This is what lets `/pr watch <url|#number>` follow a PR whose head branch
+ * differs from the session cwd (e.g. a release PR from a multi-project root).
+ * A fully-qualified URL works regardless of `cwd`; a bare `#<number>` (or
+ * `owner/repo#<number>`) requires `cwd` to live in that repository's working
+ * tree. `gh pr view <ref>` is repo-qualified for URL refs, so the checkout's
+ * branch is irrelevant.
+ */
+export async function resolveExplicitPullRequest(
+  pi: ExtensionAPI,
+  ref: string,
+  cwd: string,
+): Promise<DiscoveryResult> {
+  const fromUrl = parsePullRequestUrl(ref);
+  const repository =
+    fromUrl && fromUrl.owner && fromUrl.name
+      ? `${fromUrl.owner}/${fromUrl.name}`
+      : "";
+
+  const result = await gh(
+    pi,
+    ["pr", "view", ref, "--json", "number,url,headRefOid,state,isDraft,autoMergeRequest"],
+    cwd,
+  );
+  if (isAuthFailure(result)) {
+    return { repository, pullRequest: undefined, authFailed: true, failed: false };
+  }
+  const pullRequest =
+    result.code === 0 && result.stdout
+      ? parsePullRequestView(result.stdout)
+      : undefined;
+  return {
+    repository,
+    pullRequest,
+    authFailed: false,
+    failed: result.code !== 0 || !pullRequest,
+  };
+}
