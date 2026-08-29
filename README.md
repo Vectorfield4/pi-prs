@@ -9,7 +9,10 @@ blocking the interactive session.
 - **`/pr watch` with explicit target** — watch any PR by full URL, PR number,
   or `owner/repo#number`, independent of the checked-out branch. No more being
   pinned to the current branch's PR.
-- **Zero-token HITL** — watch a `dev → main` release PR from a project root.
+- **`pr_watch` LLM tool** — subagents cannot run slash commands, so the routing
+  session gets the same watch as an LLM-callable tool. The orchestrator reports
+  a PR URL, the router calls `pr_watch`, and zero-token polling takes over.
+- **Zero-token HITL** — watch a PR targeting `main` from a project root.
   The extension polls GitHub in the background every 30s and wakes Pi on
   approval or new feedback. A human click on GitHub becomes an agent turn with
   no blocking and no reply needed.
@@ -66,13 +69,32 @@ merges.
 > repo-qualified and works from any directory — this is what makes release-PR
 > watching from a project root possible.
 
-## Example: zero-token release approval
+## Example: zero-token approval gating
 
-1. Your session opens a `dev → main` release PR and returns its URL.
-2. Run `/pr watch <url>` on the session and finish the turn.
+1. A worker opens a PR against `main` and a reviewer passes it; the orchestrator
+   reports the PR URL.
+2. The routing session starts the watch with the `pr_watch` tool
+   (`{ action: "watch", url }`) and finishes the turn.
 3. The extension polls in the background. When a human approves (or comments),
    Pi is woken automatically with the feedback.
-4. On approval, your flow merges and creates the release.
+4. On approval, the flow merges the PR; on requested changes, it relays the
+   feedback without merging.
+
+## `pr_watch` LLM tool
+
+Slash commands run only on the interactive session, which a detached subagent
+cannot reach. For flows driven by Telegram or delegated agents, `pr_watch`
+exposes the same watch as a tool:
+
+```json
+{
+  "action": "watch",   // or "unwatch"
+  "url": "https://github.com/OWNER/REPO/pull/123"
+}
+```
+
+Use it only from the main routing session — the wake steers that session back
+into the flow.
 
 ## Extension API
 
@@ -103,7 +125,8 @@ pi-prs is a maintained fork of the original
 [`pi-prs`](https://github.com/mavam/pi-prs) by
 [Matthias Vallentin](https://github.com/mavam). It keeps the MIT license and
 the original copyright notice; see [LICENSE](LICENSE). This fork adds explicit
-PR URL/number targeting and is published as `@vectorfield/pi-prs`.
+PR URL/number targeting and the `pr_watch` LLM tool, and is published as
+`@vectorfield/pi-prs`.
 
 ## License
 

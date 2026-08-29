@@ -11,6 +11,7 @@ import { formatModelMessage } from "./format.ts";
 import { loadHtmlConverter } from "./markdown.ts";
 import { FEEDBACK_MESSAGE_TYPE, registerFeedbackRenderer } from "./message.ts";
 import { createPoller } from "./poller.ts";
+import { createWatchTool } from "./watch-tool.ts";
 
 const USAGE =
   "Usage: /pr watch [url|#number] | /pr unwatch — watch the current branch's PR, or an explicit pull request URL/number";
@@ -39,6 +40,10 @@ export default async function (pi: ExtensionAPI) {
   });
 
   registerFeedbackRenderer(pi);
+
+  // LLM-callable surface so the routing session can start/stop the watch
+  // without a human typing /pr watch (subagents cannot run slash commands).
+  pi.registerTool(createWatchTool(poller));
 
   // Any extension may publish review feedback on this channel; pi-pr turns it
   // into a steering message for the agent.
